@@ -347,7 +347,7 @@ getExt = (filePath) ->
 
 stripExt = (filePath) ->
   if (lastDotIndex = filePath.lastIndexOf '.') >= 0
-    filePath[0...lastDotIndex]
+    stripExt filePath[0...lastDotIndex]
   else
     filePath
 
