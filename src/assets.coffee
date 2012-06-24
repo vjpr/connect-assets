@@ -1,7 +1,7 @@
 # [connect-assets](http://github.com/TrevorBurnham/connect-assets)
 
 connectCache  = require 'connect-file-cache'
-Snockets      = require 'snockets'
+Snockets      = require '../../snockets'
 
 crypto        = require 'crypto'
 fs            = require 'fs'
