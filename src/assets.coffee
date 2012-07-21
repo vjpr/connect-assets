@@ -9,11 +9,20 @@ path          = require 'path'
 _             = require 'underscore'
 {parse}       = require 'url'
 
+debug = false
+if debug
+  logger =
+    debug: (args...) -> console.log args...
+else
+  logger =
+    debug: ->
+
 libs = {}
 jsCompilers = Snockets.compilers
 
 module.exports = exports = (options = {}) ->
   return connectAssets if connectAssets
+  # TODO: Multiple roots
   options.src ?= 'assets'
   options.helperContext ?= global
   if process.env.NODE_ENV is 'production'
@@ -38,7 +47,7 @@ module.exports = exports = (options = {}) ->
 class ConnectAssets
   constructor: (@options) ->
     @cache = connectCache()
-    @snockets = new Snockets src: @options.src
+    @snockets = new Snockets src: [@options.src]
 
     # Things that we must cache to work efficiently with CSS compilers
     @cssSourceFiles = {}
@@ -50,6 +59,7 @@ class ConnectAssets
     # Things that we must cache if changes aren't detected
     @cachedRoutePaths = {}
 
+  # Ensure file is compiled before handing over the cache middleware
   compileIfChanged: (req, res, next) =>
     return next() unless req.method is 'GET'
     route = parse(req.url).pathname
@@ -148,9 +158,10 @@ class ConnectAssets
     try
       resolvedPath = img resolvedPath
     catch e
-      console.error "Can't resolve image path: #{resolvedPath}"
+      #console.error "Can't resolve image path: #{resolvedPath}"
     return "url('#{resolvedPath}')"
 
+  # TODO: COMMENT: Replace `url()` with something
   fixCSSImagePaths: (css) ->
     regex = /url\([^\)]+\)/g
     css = css.replace regex, @resolveImgPath
@@ -214,8 +225,10 @@ class ConnectAssets
     if !@options.detectChanges and @cachedRoutePaths[route]
       return @cachedRoutePaths[route]
 
+    logger.debug "Compiling #{route}"
     for ext in ['js'].concat (ext for ext of jsCompilers)
       sourcePath = stripExt(route) + ".#{ext}"
+      logger.debug "Trying #{sourcePath}"
       try
         if @options.build
           filename = null
@@ -236,12 +249,15 @@ class ConnectAssets
           @snockets.getConcatenation sourcePath, snocketsFlags, callback
           return @cachedRoutePaths[route] = ["/#{filename}"]
         else
+          logger.debug 'Trying'
           chain = @snockets.getCompiledChain sourcePath, async: false
+          logger.debug chain
           return @cachedRoutePaths[route] = for {filename, js} in chain
             filename = stripExt(filename) + '.js'
             @cache.set filename, js
             "/#{filename}"
       catch e
+        logger.debug 'Failed'
         if e.code is 'ENOENT' then continue else throw e
     throw new Error("No file found for route #{route}")
 
@@ -347,7 +363,8 @@ getExt = (filePath) ->
 
 stripExt = (filePath) ->
   if (lastDotIndex = filePath.lastIndexOf '.') >= 0
-    stripExt filePath[0...lastDotIndex]
+    filePath[0...lastDotIndex]
+    #stripExt filePath[0...lastDotIndex]
   else
     filePath
 
