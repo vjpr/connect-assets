@@ -8,7 +8,7 @@
     "type": "git",
     "url": "git://github.com/TrevorBurnham/connect-assets.git"
   },
-  "main": "lib/assets.js",
+  "main": "src/assets.coffee",
   "dependencies": {
     "connect-file-cache": "0.2.4",
     "mime": "1.2.2",

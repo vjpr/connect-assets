@@ -10,12 +10,20 @@ _             = require 'underscore'
 {parse}       = require 'url'
 
 debug = false
+logger = {}
 if debug
   logger =
     debug: (args...) -> console.log args...
 else
   logger =
     debug: ->
+
+debugTimings = true
+if debugTimings
+  logger.time = (args...) -> console.time args...
+  logger.timeEnd = (args...) -> console.timeEnd args...
+else
+  logger.time = logger.timeEnd = ->
 
 libs = {}
 jsCompilers = Snockets.compilers
@@ -36,6 +44,7 @@ module.exports = exports = (options = {}) ->
   options.detectChanges ?= true
   options.minifyBuilds ?= true
   options.pathsOnly ?= false
+  options.compileEveryRequest ?= false
   jsCompilers = _.extend jsCompilers, options.jsCompilers || {}
 
   connectAssets = module.exports.instance = new ConnectAssets options
@@ -63,10 +72,20 @@ class ConnectAssets
   compileIfChanged: (req, res, next) =>
     return next() unless req.method is 'GET'
     route = parse(req.url).pathname
+    # Always compile CSS because its fast
     try
       @compileCSS route[1..]
-    try
-      @compileJS route[1..]
+    # If we are not rendering the view,
+    # we need to recompile changed files manually.
+    # We should only call compileJS on files the are in js(...) tags in the view.
+    if @options.compileEveryRequest
+      try
+        #@compileJS route[1..]
+        if route is '/recompile'
+          file = 'javascripts/application.js'
+          console.log "Compiling '#{file}'"
+          @compileJS file
+          return res.send '', 200
     @cache.middleware req, res, next
 
   # ## CSS and JS tag functions
@@ -94,13 +113,14 @@ class ConnectAssets
 
     context.js = (route) =>
       route = expandRoute route, '.js', context.js.root
+      console.time "Compiled '#{route}'"
       if route.match REMOTE_PATH
         routes = [route]
       else if srcIsRemote
         routes = ["#{@options.src}/#{route}"]
       else
         routes = (@options.servePath + p for p in @compileJS route)
-
+      console.timeEnd "Compiled '#{route}'"
       return routes if @options.pathsOnly
       ("<script src='#{r}'></script>" for r in routes).join '\n'
     context.js.root = 'js'
@@ -246,15 +266,19 @@ class ConnectAssets
             else
               filename = @buildFilenames[sourcePath]
           snocketsFlags = minify: @options.minifyBuilds, async: false
+          logger.time "GetConcatenation: " + sourcePath
           @snockets.getConcatenation sourcePath, snocketsFlags, callback
+          logger.time "GetConcatenation: " + sourcePath
           return @cachedRoutePaths[route] = ["/#{filename}"]
         else
           logger.debug 'Trying'
+          #logger.time "GetCompiledChain: " + sourcePath
           chain = @snockets.getCompiledChain sourcePath, async: false
-          logger.debug chain
+          #logger.timeEnd "GetCompiledChain: " + sourcePath
           return @cachedRoutePaths[route] = for {filename, js} in chain
             filename = stripExt(filename) + '.js'
             @cache.set filename, js
+            #console.log 'Caching: ' + filename
             "/#{filename}"
       catch e
         logger.debug 'Failed'
